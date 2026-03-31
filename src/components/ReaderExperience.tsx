@@ -15,6 +15,7 @@ import {
   resolveReaderBodyFontSize,
   resolveReaderStageWidth,
 } from '../lib/readerLayout';
+import { layoutReaderCallouts, layoutReaderFlourishes } from '../lib/readerWhimsy';
 import {
   buildFontString,
   layoutParagraphFlow,
@@ -130,13 +131,28 @@ export default function ReaderExperience() {
     [activeScene, contentWidth, lineHeight, motionTimeMs],
   );
 
+  const flourishLayouts = useMemo(
+    () => layoutReaderFlourishes(activeScene, Math.max(320, effectiveStageWidth - 32), motionTimeMs),
+    [activeScene, effectiveStageWidth, motionTimeMs],
+  );
+
+  const calloutLayouts = useMemo(
+    () => layoutReaderCallouts(sceneLayout.callouts, contentWidth),
+    [contentWidth, sceneLayout.callouts],
+  );
+
+  const flowObstacles = useMemo(
+    () => [...sceneLayout.obstacles, ...calloutLayouts.map((callout) => callout.obstacle)],
+    [calloutLayouts, sceneLayout.obstacles],
+  );
+
   const flowLayout = useMemo(
     () =>
-      layoutParagraphFlow(preparedParagraph, contentWidth, lineHeight, sceneLayout.obstacles, {
+      layoutParagraphFlow(preparedParagraph, contentWidth, lineHeight, flowObstacles, {
         topPadding: sceneLayout.topPadding,
         bottomPadding: sceneLayout.bottomPadding,
       }),
-    [contentWidth, lineHeight, preparedParagraph, sceneLayout],
+    [contentWidth, flowObstacles, lineHeight, preparedParagraph, sceneLayout.bottomPadding, sceneLayout.topPadding],
   );
 
   const measureLayout = useMemo(
@@ -157,9 +173,20 @@ export default function ReaderExperience() {
 
   const heroInset = Math.max(12, Math.round(headlineLayout.lineHeight * 0.22));
   const heroHeight = headlineLayout.height + heroInset * 2;
+  const flourishBandHeight =
+    flourishLayouts.reduce(
+      (maxHeight, flourish) => Math.max(maxHeight, flourish.top + flourish.height),
+      Math.round(headlineLayout.lineHeight * 2.2),
+    ) + 8;
+  const calloutBottom = calloutLayouts.reduce(
+    (maxBottom, callout) => Math.max(maxBottom, callout.top + callout.height),
+    0,
+  );
   const stageHeight = Math.max(
+    sceneLayout.stageMinHeight,
     flowLayout.stageHeight,
     sceneLayout.figure.top + sceneLayout.figure.height + lineHeight * 1.8,
+    calloutBottom + lineHeight * 1.2,
   );
   const inspectorValue = useMemo(
     () =>
@@ -187,9 +214,20 @@ export default function ReaderExperience() {
             lineCount: measureLayout.lineCount,
           },
           flow: {
+            obstacleCount: flowObstacles.length,
             stageHeight,
             lineCount: flowLayout.lineCount,
             figure: sceneLayout.figure,
+            callouts: calloutLayouts.map((callout) => ({
+              id: callout.id,
+              label: callout.label,
+              tone: callout.tone,
+              left: callout.left,
+              top: callout.top,
+              width: callout.width,
+              height: callout.height,
+              lineCount: callout.lines.length,
+            })),
             lines: flowLayout.lines.map((line) => ({
               text: line.text,
               width: line.width,
@@ -209,12 +247,14 @@ export default function ReaderExperience() {
       activeScene.sourceLabel,
       activeScene.title,
       bodyFont,
+      calloutLayouts,
       contentInsetLeft,
       contentInsetRight,
       contentWidth,
       effectiveStageWidth,
       flowLayout.lineCount,
       flowLayout.lines,
+      flowObstacles.length,
       fontSize,
       fontSizeBias,
       lineHeight,
@@ -256,14 +296,15 @@ export default function ReaderExperience() {
   };
 
   return (
-    <main className="reader-shell">
+    <main className={`reader-shell is-${activeScene.theme}`}>
       <header className="reader-header">
         <div className="reader-brand">
           <p className="reader-brand-mark">Pretext Reader</p>
           <h1>Pretext Playground</h1>
           <p>
-            A public-domain Alice spread where the illustration actually changes the text geometry.
-            Pretext prepares the paragraph once, then re-lays out every line as the figure drifts.
+            A public-domain Alice sequence where illustrations and measured callouts actually change
+            the reading geometry. Pretext prepares each passage once, then re-lays out the page as
+            figures and notes drift through it.
           </p>
         </div>
 
@@ -300,7 +341,7 @@ export default function ReaderExperience() {
         </div>
       </header>
 
-      <section className="reader-hero" key={`hero-${activeScene.id}`}>
+      <section className={`reader-hero is-${activeScene.theme}`} key={`hero-${activeScene.id}`}>
         <p className="reader-kicker">
           {activeScene.chapter} / {activeScene.sourceLabel}
         </p>
@@ -331,6 +372,47 @@ export default function ReaderExperience() {
         </div>
 
         <p className="reader-deck">{activeScene.deck}</p>
+
+        <div
+          className={`reader-flourish-band is-${activeScene.theme}`}
+          style={{ height: flourishBandHeight, maxWidth: effectiveStageWidth }}
+        >
+          {flourishLayouts.map((flourish, index) => (
+            <div
+              key={`${activeScene.id}-flourish-${flourish.id}`}
+              className={`reader-flourish is-${flourish.tone}`}
+              style={
+                {
+                  left: flourish.left,
+                  top: flourish.top,
+                  width: flourish.width,
+                  height: flourish.height,
+                  transform: `rotate(${flourish.rotation}deg)`,
+                  '--flourish-delay': `${index * 120}ms`,
+                  '--flourish-float-y': `${Math.sin(motionTimeMs / 880 + index * 0.72) * 2.2}px`,
+                } as CSSProperties
+              }
+            >
+              {flourish.lines.map((line, lineIndex) => (
+                <div
+                  key={`${flourish.id}-${lineIndex}`}
+                  className="reader-flourish-line"
+                  style={
+                    {
+                      left: 14,
+                      top: line.y,
+                      width: flourish.width - 28,
+                      font: flourish.font,
+                      lineHeight: `${flourish.lineHeight}px`,
+                    } as CSSProperties
+                  }
+                >
+                  {line.text}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </section>
 
       <AsciiPlayground maxWidth={effectiveStageWidth} />
@@ -353,7 +435,10 @@ export default function ReaderExperience() {
         </aside>
 
         <div className="reader-stage-wrap" ref={stageRef}>
-          <div className="reader-stage" style={{ height: stageHeight, width: effectiveStageWidth }}>
+          <div
+            className={`reader-stage is-${activeScene.theme}`}
+            style={{ height: stageHeight, width: effectiveStageWidth }}
+          >
             <figure
               className="reader-figure"
               style={{
@@ -369,6 +454,56 @@ export default function ReaderExperience() {
                 {sceneLayout.figure.caption} {sceneLayout.figure.credit}
               </figcaption>
             </figure>
+
+            {calloutLayouts.map((callout) => (
+              <aside
+                key={`${activeScene.id}-${callout.id}`}
+                className={`reader-callout is-${callout.tone} is-scene-${activeScene.theme}`}
+                style={{
+                  left: contentInsetLeft + callout.left,
+                  top: callout.top,
+                  width: callout.width,
+                  height: callout.height,
+                  padding: `${callout.paddingY}px ${callout.paddingX}px`,
+                  transform: `rotate(${callout.rotation}deg)`,
+                }}
+              >
+                <p
+                  className="reader-callout-label"
+                  style={{
+                    fontSize: callout.labelFontSize,
+                    lineHeight: `${callout.labelFontSize}px`,
+                  }}
+                >
+                  {callout.label}
+                </p>
+                <div
+                  className="reader-callout-body"
+                  style={{
+                    height: callout.height - callout.textTop - callout.paddingY,
+                    marginTop: callout.textTop - callout.paddingY - callout.labelFontSize,
+                  }}
+                >
+                  {callout.lines.map((line, index) => (
+                    <div
+                      key={`${callout.id}-${index}`}
+                      className="reader-callout-line"
+                      style={
+                        {
+                          left: callout.paddingX,
+                          top: line.y,
+                          width: callout.contentWidth,
+                          font: callout.font,
+                          lineHeight: `${callout.lineHeight}px`,
+                        } as CSSProperties
+                      }
+                    >
+                      {line.text.length > 0 ? line.text : '\u00A0'}
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            ))}
 
             {flowLayout.lines.map((line, index) => {
               return (

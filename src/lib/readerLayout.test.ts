@@ -26,6 +26,7 @@ describe('buildReaderSceneLayout', () => {
     expect(layout.figure.left).toBeGreaterThanOrEqual(0);
     expect(layout.figure.left + layout.figure.width).toBeLessThanOrEqual(900);
     expect(layout.obstacles.length).toBe(1);
+    expect(layout.callouts.length).toBeGreaterThan(0);
   });
 
   test('stacks the figure above the text in compact mode', () => {
@@ -34,5 +35,18 @@ describe('buildReaderSceneLayout', () => {
     expect(layout.topPadding).toBeGreaterThan(layout.figure.top + layout.figure.height);
     expect(layout.figure.left).toBeGreaterThan(0);
     expect(layout.stageMinHeight).toBeGreaterThan(layout.topPadding);
+    expect(layout.callouts).toHaveLength(0);
+  });
+
+  test('supports later scenes from the end of the story', () => {
+    const layout = buildReaderSceneLayout(READER_SCENES[6]!, 920, 30);
+
+    expect(READER_SCENES).toHaveLength(7);
+    expect(layout.figure.top).toBeGreaterThan(0);
+    expect(layout.callouts.length).toBeGreaterThan(0);
+  });
+
+  test('keeps the max-whimsy scene set populated with three callouts per spread', () => {
+    expect(READER_SCENES.every((scene) => scene.callouts.length === 3)).toBe(true);
   });
 });
