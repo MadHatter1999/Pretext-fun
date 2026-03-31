@@ -1,0 +1,436 @@
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type RefObject,
+} from 'react';
+
+import AsciiPlayground from './AsciiPlayground';
+import { BOOK_SOURCE, READER_SCENES, type ReaderScene } from '../lib/readerContent';
+import {
+  buildReaderSceneLayout,
+  resolveReaderBodyFontSize,
+  resolveReaderStageWidth,
+} from '../lib/readerLayout';
+import {
+  buildFontString,
+  layoutParagraphFlow,
+  measureParagraph,
+  prepareParagraph,
+} from '../lib/pretextAdapter';
+import { fitHeadlineLayout } from '../lib/showcaseLayouts';
+
+type CopyState = 'idle' | 'copied' | 'error';
+
+function useElementWidth(ref: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry === undefined) {
+        return;
+      }
+
+      setWidth(Math.round(entry.contentRect.width));
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return width;
+}
+
+function buildSceneLabel(scene: ReaderScene, index: number): string {
+  return `${scene.chapter} - Scene ${index + 1}`;
+}
+
+function formatPixels(value: number): string {
+  return `${Math.round(value).toLocaleString('en-US')} px`;
+}
+
+export default function ReaderExperience() {
+  const [activeSceneIndex, setActiveSceneIndex] = useState(0);
+  const [fontSizeBias, setFontSizeBias] = useState(0);
+  const [copyState, setCopyState] = useState<CopyState>('idle');
+  const [motionTimeMs, setMotionTimeMs] = useState(0);
+  const [isPending, startTransition] = useTransition();
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const stageWidth = useElementWidth(stageRef);
+
+  useEffect(() => {
+    let frameId = 0;
+    let previousTick = -1;
+
+    const animate = (time: number) => {
+      const nextTick = Math.floor(time / 220) * 220;
+      if (nextTick !== previousTick) {
+        previousTick = nextTick;
+        setMotionTimeMs(nextTick);
+      }
+
+      frameId = window.requestAnimationFrame(animate);
+    };
+
+    frameId = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
+    if (copyState === 'idle') {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCopyState('idle');
+    }, 1600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [copyState]);
+
+  const activeScene = READER_SCENES[activeSceneIndex] ?? READER_SCENES[0]!;
+  const viewportStageWidth = stageWidth > 0 ? stageWidth : 760;
+  const effectiveStageWidth = resolveReaderStageWidth(viewportStageWidth);
+  const contentInsetLeft = Math.max(24, Math.round(effectiveStageWidth * 0.035));
+  const contentInsetRight = Math.max(20, Math.round(effectiveStageWidth * 0.025));
+  const contentWidth = Math.max(260, effectiveStageWidth - contentInsetLeft - contentInsetRight);
+  const fontSize = resolveReaderBodyFontSize(effectiveStageWidth, fontSizeBias);
+  const lineHeight = Math.round(fontSize * 1.62);
+  const bodyFont = useMemo(
+    () =>
+      buildFontString({
+        fontFamily: 'Inter, sans-serif',
+        fontSize,
+        fontWeight: 400,
+      }),
+    [fontSize],
+  );
+
+  const preparedParagraph = useMemo(
+    () =>
+      prepareParagraph({
+        text: activeScene.text,
+        font: bodyFont,
+        whiteSpace: 'normal',
+      }),
+    [activeScene.text, bodyFont],
+  );
+
+  const sceneLayout = useMemo(
+    () => buildReaderSceneLayout(activeScene, contentWidth, lineHeight, motionTimeMs),
+    [activeScene, contentWidth, lineHeight, motionTimeMs],
+  );
+
+  const flowLayout = useMemo(
+    () =>
+      layoutParagraphFlow(preparedParagraph, contentWidth, lineHeight, sceneLayout.obstacles, {
+        topPadding: sceneLayout.topPadding,
+        bottomPadding: sceneLayout.bottomPadding,
+      }),
+    [contentWidth, lineHeight, preparedParagraph, sceneLayout],
+  );
+
+  const measureLayout = useMemo(
+    () => measureParagraph(preparedParagraph, contentWidth, lineHeight),
+    [contentWidth, lineHeight, preparedParagraph],
+  );
+
+  const headlineLayout = useMemo(
+    () =>
+      fitHeadlineLayout({
+        text: activeScene.title,
+        fontFamily: 'Inter, sans-serif',
+        maxWidth: Math.max(260, effectiveStageWidth - 40),
+        maxHeight: 180,
+      }),
+    [activeScene.title, effectiveStageWidth],
+  );
+
+  const heroInset = Math.max(12, Math.round(headlineLayout.lineHeight * 0.22));
+  const heroHeight = headlineLayout.height + heroInset * 2;
+  const stageHeight = Math.max(
+    flowLayout.stageHeight,
+    sceneLayout.figure.top + sceneLayout.figure.height + lineHeight * 1.8,
+  );
+  const inspectorValue = useMemo(
+    () =>
+      JSON.stringify(
+        {
+          scene: {
+            id: activeScene.id,
+            chapter: activeScene.chapter,
+            title: activeScene.title,
+            sourceLabel: activeScene.sourceLabel,
+          },
+          input: {
+            font: bodyFont,
+            fontSize,
+            fontSizeBias,
+            lineHeight,
+            viewportStageWidth,
+            stageWidth: effectiveStageWidth,
+            contentWidth,
+            contentInsetLeft,
+            contentInsetRight,
+          },
+          measured: {
+            height: measureLayout.height,
+            lineCount: measureLayout.lineCount,
+          },
+          flow: {
+            stageHeight,
+            lineCount: flowLayout.lineCount,
+            figure: sceneLayout.figure,
+            lines: flowLayout.lines.map((line) => ({
+              text: line.text,
+              width: line.width,
+              x: line.x,
+              y: line.y,
+              availableWidth: line.availableWidth,
+              slotSide: line.slotSide,
+            })),
+          },
+        },
+        null,
+        2,
+      ),
+    [
+      activeScene.chapter,
+      activeScene.id,
+      activeScene.sourceLabel,
+      activeScene.title,
+      bodyFont,
+      contentInsetLeft,
+      contentInsetRight,
+      contentWidth,
+      effectiveStageWidth,
+      flowLayout.lineCount,
+      flowLayout.lines,
+      fontSize,
+      fontSizeBias,
+      lineHeight,
+      measureLayout.height,
+      measureLayout.lineCount,
+      sceneLayout.figure,
+      stageHeight,
+      viewportStageWidth,
+    ],
+  );
+
+  const copyStatusLabel =
+    copyState === 'copied'
+      ? 'Copied.'
+      : copyState === 'error'
+        ? 'Copy failed.'
+        : isPending
+          ? 'Switching spread...'
+          : 'Ready to copy.';
+
+  const handleSceneChange = (nextIndex: number) => {
+    if (nextIndex === activeSceneIndex) {
+      return;
+    }
+
+    setCopyState('idle');
+    startTransition(() => {
+      setActiveSceneIndex(nextIndex);
+    });
+  };
+
+  const handleCopyMetrics = async () => {
+    try {
+      await navigator.clipboard.writeText(inspectorValue);
+      setCopyState('copied');
+    } catch {
+      setCopyState('error');
+    }
+  };
+
+  return (
+    <main className="reader-shell">
+      <header className="reader-header">
+        <div className="reader-brand">
+          <p className="reader-brand-mark">Pretext Reader</p>
+          <h1>Pretext Playground</h1>
+          <p>
+            A public-domain Alice spread where the illustration actually changes the text geometry.
+            Pretext prepares the paragraph once, then re-lays out every line as the figure drifts.
+          </p>
+        </div>
+
+        <div className="reader-controls">
+          <nav className="scene-nav" aria-label="Reading scenes">
+            {READER_SCENES.map((scene, index) => (
+              <button
+                key={scene.id}
+                className={`scene-button${index === activeSceneIndex ? ' is-active' : ''}`}
+                type="button"
+                onClick={() => handleSceneChange(index)}
+              >
+                <small>{buildSceneLabel(scene, index)}</small>
+                <span>{scene.title}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="type-controls" aria-label="Body size controls">
+            <button
+              type="button"
+              onClick={() => setFontSizeBias((currentBias) => Math.max(-2, currentBias - 1))}
+            >
+              A-
+            </button>
+            <span>Body {fontSize}px</span>
+            <button
+              type="button"
+              onClick={() => setFontSizeBias((currentBias) => Math.min(3, currentBias + 1))}
+            >
+              A+
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <section className="reader-hero" key={`hero-${activeScene.id}`}>
+        <p className="reader-kicker">
+          {activeScene.chapter} / {activeScene.sourceLabel}
+        </p>
+
+        <div
+          className="reader-hero-canvas"
+          style={{ height: heroHeight, maxWidth: effectiveStageWidth }}
+        >
+          {headlineLayout.lines.map((line, index) => (
+            <div
+              key={`${activeScene.id}-headline-${index}`}
+              className="reader-hero-line"
+              style={
+                {
+                  left: line.x,
+                  top: line.y + heroInset,
+                  width: Math.min(headlineLayout.width, contentWidth),
+                  font: headlineLayout.font,
+                  lineHeight: `${headlineLayout.lineHeight}px`,
+                  '--line-float-y': `${Math.sin(motionTimeMs / 820 + index * 0.68) * 1.8}px`,
+                  animationDelay: `${index * 70}ms`,
+                } as CSSProperties
+              }
+            >
+              {line.text}
+            </div>
+          ))}
+        </div>
+
+        <p className="reader-deck">{activeScene.deck}</p>
+      </section>
+
+      <AsciiPlayground maxWidth={effectiveStageWidth} />
+
+      <section className="reader-stage-grid" key={`scene-${activeScene.id}`}>
+        <aside className="reader-aside">
+          <p className="reader-aside-label">Reading Note</p>
+          <p className="reader-quote">{activeScene.quote}</p>
+          <p className="reader-source-line">
+            Text from{' '}
+            <a href={BOOK_SOURCE.url} target="_blank" rel="noreferrer">
+              {BOOK_SOURCE.label}
+            </a>
+            . Illustration from{' '}
+            <a href={activeScene.figure.sourceUrl} target="_blank" rel="noreferrer">
+              {activeScene.figure.credit}
+            </a>
+            .
+          </p>
+        </aside>
+
+        <div className="reader-stage-wrap" ref={stageRef}>
+          <div className="reader-stage" style={{ height: stageHeight, width: effectiveStageWidth }}>
+            <figure
+              className="reader-figure"
+              style={{
+                left: contentInsetLeft + sceneLayout.figure.left,
+                top: sceneLayout.figure.top,
+                width: sceneLayout.figure.width,
+                height: sceneLayout.figure.height,
+                transform: `rotate(${sceneLayout.figure.rotation}deg)`,
+              }}
+            >
+              <img src={sceneLayout.figure.src} alt={sceneLayout.figure.alt} />
+              <figcaption>
+                {sceneLayout.figure.caption} {sceneLayout.figure.credit}
+              </figcaption>
+            </figure>
+
+            {flowLayout.lines.map((line, index) => {
+              return (
+                <div
+                  key={`${activeScene.id}-${index}`}
+                  className={`story-line is-${line.slotSide}`}
+                  style={
+                    {
+                      left: contentInsetLeft + line.x,
+                      top: line.y,
+                      width: line.availableWidth,
+                      font: bodyFont,
+                      lineHeight: `${lineHeight}px`,
+                    } as CSSProperties
+                  }
+                >
+                  {line.text.length > 0 ? line.text : '\u00A0'}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <footer className="reader-footer">
+        <div>
+          <p className="reader-aside-label">Layout Snapshot</p>
+          <p className="reader-source-line">
+            {measureLayout.lineCount} measured lines, {flowLayout.lineCount} flowed lines, measure{' '}
+            {formatPixels(effectiveStageWidth)}, stage {formatPixels(stageHeight)}.
+          </p>
+        </div>
+
+        <div className="reader-footer-nav">
+          <button
+            type="button"
+            onClick={() =>
+              handleSceneChange((activeSceneIndex - 1 + READER_SCENES.length) % READER_SCENES.length)
+            }
+          >
+            Previous spread
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSceneChange((activeSceneIndex + 1) % READER_SCENES.length)}
+          >
+            Next spread
+          </button>
+        </div>
+      </footer>
+
+      <details className="reader-inspector">
+        <summary>Debug JSON</summary>
+        <p>Copy the prepared font, measured result, obstacle geometry, and final flowed lines.</p>
+        <textarea readOnly value={inspectorValue} rows={16} />
+        <div className="reader-inspector-actions">
+          <span>{copyStatusLabel}</span>
+          <button type="button" onClick={handleCopyMetrics}>
+            Copy metrics
+          </button>
+        </div>
+      </details>
+    </main>
+  );
+}
