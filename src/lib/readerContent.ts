@@ -12,8 +12,11 @@ export type ReaderFigure = {
   caption: string;
   credit: string;
   displayAspectRatio: number;
+  preloadSrc: string;
+  sizes: string;
   sourceUrl: string;
   src: string;
+  srcSet: string;
 };
 
 export type ReaderScene = {
@@ -33,8 +36,47 @@ function buildCommonsFilePage(filename: string): string {
   return `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(filename)}`;
 }
 
-function buildCommonsFilePath(filename: string): string {
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}`;
+function buildCommonsFilePath(filename: string, width?: number): string {
+  const baseUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}`;
+  return width ? `${baseUrl}?width=${width}` : baseUrl;
+}
+
+function buildCommonsSrcSet(filename: string, widths: readonly number[]): string {
+  return widths.map((width) => `${buildCommonsFilePath(filename, width)} ${width}w`).join(', ');
+}
+
+function buildReaderFigure(
+  filename: string,
+  {
+    alt,
+    caption,
+    credit,
+    displayAspectRatio,
+    sizes = '(max-width: 719px) 42vw, (max-width: 1100px) 32vw, 260px',
+    widths = [240, 360, 480, 640, 800] as const,
+  }: {
+    alt: string;
+    caption: string;
+    credit: string;
+    displayAspectRatio: number;
+    sizes?: string;
+    widths?: readonly number[];
+  },
+): ReaderFigure {
+  const defaultWidth = widths[Math.min(3, widths.length - 1)] ?? 640;
+  const preloadWidth = widths[Math.min(2, widths.length - 1)] ?? defaultWidth;
+
+  return {
+    alt,
+    caption,
+    credit,
+    displayAspectRatio,
+    preloadSrc: buildCommonsFilePath(filename, preloadWidth),
+    sizes,
+    sourceUrl: buildCommonsFilePage(filename),
+    src: buildCommonsFilePath(filename, defaultWidth),
+    srcSet: buildCommonsSrcSet(filename, widths),
+  };
 }
 
 export const BOOK_SOURCE = {
@@ -77,14 +119,12 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'berry',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Down_the_Rabbit_Hole.png', {
       alt: 'The White Rabbit consulting his watch, illustrated by John Tenniel.',
       caption: 'The rabbit with the watch.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 1.52,
-      sourceUrl: buildCommonsFilePage('Down_the_Rabbit_Hole.png'),
-      src: buildCommonsFilePath('Down_the_Rabbit_Hole.png'),
-    },
+    }),
   },
   {
     id: 'fall',
@@ -120,14 +160,13 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'amber',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Alice_par_John_Tenniel_05.png', {
       alt: 'Alice stretched long and impossible as she falls, illustrated by John Tenniel.',
       caption: 'Alice stretched into the impossible.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 2.05,
-      sourceUrl: buildCommonsFilePage('Alice_par_John_Tenniel_05.png'),
-      src: buildCommonsFilePath('Alice_par_John_Tenniel_05.png'),
-    },
+      sizes: '(max-width: 719px) 30vw, (max-width: 1100px) 22vw, 170px',
+    }),
   },
   {
     id: 'hall',
@@ -163,14 +202,12 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'sage',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Alice_par_John_Tenniel_06.png', {
       alt: 'Alice looming large while the rabbit escapes, illustrated by John Tenniel.',
       caption: 'Alice fills the room.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 1.14,
-      sourceUrl: buildCommonsFilePage('Alice_par_John_Tenniel_06.png'),
-      src: buildCommonsFilePath('Alice_par_John_Tenniel_06.png'),
-    },
+    }),
   },
   {
     id: 'tea',
@@ -206,14 +243,14 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'ink',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Alice_par_John_Tenniel_27.png', {
       alt: 'Alice with the Mad Hatter, the March Hare, and the Dormouse, illustrated by John Tenniel.',
       caption: 'The tea-table at perpetual six.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 0.88,
-      sourceUrl: buildCommonsFilePage('Alice_par_John_Tenniel_27.png'),
-      src: buildCommonsFilePath('Alice_par_John_Tenniel_27.png'),
-    },
+      sizes: '(max-width: 719px) 44vw, (max-width: 1100px) 34vw, 280px',
+      widths: [280, 420, 560, 720, 920],
+    }),
   },
   {
     id: 'queen',
@@ -249,14 +286,12 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'sage',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Alice-queen-hearts.jpg', {
       alt: "The Queen's croquet-ground, illustrated by John Tenniel.",
       caption: 'Croquet under royal threat.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 1.22,
-      sourceUrl: buildCommonsFilePage('Alice-queen-hearts.jpg'),
-      src: buildCommonsFilePath('Alice-queen-hearts.jpg'),
-    },
+    }),
   },
   {
     id: 'trial',
@@ -292,14 +327,12 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'amber',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Alice_par_John_Tenniel_40.png', {
       alt: 'Alice in court, illustrated by John Tenniel.',
       caption: 'Alice grows bold in the court.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 1.21,
-      sourceUrl: buildCommonsFilePage('Alice_par_John_Tenniel_40.png'),
-      src: buildCommonsFilePath('Alice_par_John_Tenniel_40.png'),
-    },
+    }),
   },
   {
     id: 'waking',
@@ -337,13 +370,11 @@ export const READER_SCENES: readonly ReaderScene[] = [
         tone: 'berry',
       },
     ],
-    figure: {
+    figure: buildReaderFigure('Alice_par_John_Tenniel_42.png', {
       alt: 'The pack of cards rushing at Alice, illustrated by John Tenniel.',
       caption: 'The dream breaks into leaves and cards.',
       credit: 'John Tenniel, 1865.',
       displayAspectRatio: 1.34,
-      sourceUrl: buildCommonsFilePage('Alice_par_John_Tenniel_42.png'),
-      src: buildCommonsFilePath('Alice_par_John_Tenniel_42.png'),
-    },
+    }),
   },
 ] as const;

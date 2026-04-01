@@ -98,6 +98,73 @@ export default function ReaderExperience() {
     return () => window.clearTimeout(timeoutId);
   }, [copyState]);
 
+  useEffect(() => {
+    const head = document.head;
+    const connectionTargets = [
+      ['preconnect', 'https://commons.wikimedia.org'],
+      ['preconnect', 'https://upload.wikimedia.org'],
+    ] as const;
+    const links = connectionTargets.map(([rel, href]) => {
+      let link = head.querySelector<HTMLLinkElement>(`link[rel="${rel}"][href="${href}"]`);
+      let created = false;
+
+      if (link === null) {
+        link = document.createElement('link');
+        link.rel = rel;
+        link.href = href;
+        link.crossOrigin = 'anonymous';
+        head.appendChild(link);
+        created = true;
+      }
+
+      return { created, link };
+    });
+
+    return () => {
+      for (const { created, link } of links) {
+        if (created) {
+          link.remove();
+        }
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const preloadIndices = [
+      (activeSceneIndex + 1) % READER_SCENES.length,
+      (activeSceneIndex + 2) % READER_SCENES.length,
+      (activeSceneIndex - 1 + READER_SCENES.length) % READER_SCENES.length,
+    ];
+
+    const seen = new Set<string>();
+    const preloadedImages = preloadIndices
+      .map((index) => READER_SCENES[index]?.figure)
+      .filter((figure): figure is ReaderScene['figure'] => figure !== undefined)
+      .filter((figure) => {
+        if (seen.has(figure.preloadSrc)) {
+          return false;
+        }
+
+        seen.add(figure.preloadSrc);
+        return true;
+      })
+      .map((figure) => {
+        const image = new Image();
+        image.decoding = 'async';
+        image.sizes = figure.sizes;
+        image.srcset = figure.srcSet;
+        image.src = figure.preloadSrc;
+        return image;
+      });
+
+    return () => {
+      for (const image of preloadedImages) {
+        image.src = '';
+        image.srcset = '';
+      }
+    };
+  }, [activeSceneIndex]);
+
   const activeScene = READER_SCENES[activeSceneIndex] ?? READER_SCENES[0]!;
   const viewportStageWidth = stageWidth > 0 ? stageWidth : 760;
   const effectiveStageWidth = resolveReaderStageWidth(viewportStageWidth);
@@ -397,8 +464,16 @@ export default function ReaderExperience() {
                 height: sceneLayout.figure.height,
                 transform: `rotate(${sceneLayout.figure.rotation}deg)`,
               }}
-            >
-              <img src={sceneLayout.figure.src} alt={sceneLayout.figure.alt} />
+              >
+              <img
+                src={sceneLayout.figure.src}
+                srcSet={sceneLayout.figure.srcSet}
+                sizes={sceneLayout.figure.sizes}
+                alt={sceneLayout.figure.alt}
+                decoding="async"
+                fetchPriority="high"
+                loading="eager"
+              />
               <figcaption>
                 {sceneLayout.figure.caption} {sceneLayout.figure.credit}
               </figcaption>
