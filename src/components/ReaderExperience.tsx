@@ -15,7 +15,7 @@ import {
   resolveReaderBodyFontSize,
   resolveReaderStageWidth,
 } from '../lib/readerLayout';
-import { layoutReaderCallouts, layoutReaderFlourishes } from '../lib/readerWhimsy';
+import { layoutReaderCallouts } from '../lib/readerWhimsy';
 import {
   buildFontString,
   layoutParagraphFlow,
@@ -131,11 +131,6 @@ export default function ReaderExperience() {
     [activeScene, contentWidth, lineHeight, motionTimeMs],
   );
 
-  const flourishLayouts = useMemo(
-    () => layoutReaderFlourishes(activeScene, Math.max(320, effectiveStageWidth - 32), motionTimeMs),
-    [activeScene, effectiveStageWidth, motionTimeMs],
-  );
-
   const calloutLayouts = useMemo(
     () => layoutReaderCallouts(sceneLayout.callouts, contentWidth),
     [contentWidth, sceneLayout.callouts],
@@ -173,11 +168,6 @@ export default function ReaderExperience() {
 
   const heroInset = Math.max(12, Math.round(headlineLayout.lineHeight * 0.22));
   const heroHeight = headlineLayout.height + heroInset * 2;
-  const flourishBandHeight =
-    flourishLayouts.reduce(
-      (maxHeight, flourish) => Math.max(maxHeight, flourish.top + flourish.height),
-      Math.round(headlineLayout.lineHeight * 2.2),
-    ) + 8;
   const calloutBottom = calloutLayouts.reduce(
     (maxBottom, callout) => Math.max(maxBottom, callout.top + callout.height),
     0,
@@ -372,50 +362,9 @@ export default function ReaderExperience() {
         </div>
 
         <p className="reader-deck">{activeScene.deck}</p>
-
-        <div
-          className={`reader-flourish-band is-${activeScene.theme}`}
-          style={{ height: flourishBandHeight, maxWidth: effectiveStageWidth }}
-        >
-          {flourishLayouts.map((flourish, index) => (
-            <div
-              key={`${activeScene.id}-flourish-${flourish.id}`}
-              className={`reader-flourish is-${flourish.tone}`}
-              style={
-                {
-                  left: flourish.left,
-                  top: flourish.top,
-                  width: flourish.width,
-                  height: flourish.height,
-                  transform: `rotate(${flourish.rotation}deg)`,
-                  '--flourish-delay': `${index * 120}ms`,
-                  '--flourish-float-y': `${Math.sin(motionTimeMs / 880 + index * 0.72) * 2.2}px`,
-                } as CSSProperties
-              }
-            >
-              {flourish.lines.map((line, lineIndex) => (
-                <div
-                  key={`${flourish.id}-${lineIndex}`}
-                  className="reader-flourish-line"
-                  style={
-                    {
-                      left: 14,
-                      top: line.y,
-                      width: flourish.width - 28,
-                      font: flourish.font,
-                      lineHeight: `${flourish.lineHeight}px`,
-                    } as CSSProperties
-                  }
-                >
-                  {line.text}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
       </section>
 
-      <AsciiPlayground maxWidth={effectiveStageWidth} />
+      {activeSceneIndex === 0 ? <AsciiPlayground maxWidth={effectiveStageWidth} /> : null}
 
       <section className="reader-stage-grid" key={`scene-${activeScene.id}`}>
         <aside className="reader-aside">

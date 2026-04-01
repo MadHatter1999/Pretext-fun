@@ -57,27 +57,88 @@ function createObstacle(
   };
 }
 
-function createFigureObstacle(
+function createCenteredObstacle(
+  id: string,
+  stageWidth: number,
+  centerX: number,
+  top: number,
+  width: number,
+  height: number,
+): FlowObstacle {
+  const safeWidth = clamp(width, 1, stageWidth);
+  return createObstacle(
+    id,
+    clamp(centerX - safeWidth / 2, 0, Math.max(0, stageWidth - safeWidth)),
+    Math.max(0, top),
+    safeWidth,
+    height,
+  );
+}
+
+function getObstacleBounds(obstacles: FlowObstacle[]): {
+  bottom: number;
+  top: number;
+} {
+  return obstacles.reduce(
+    (bounds, obstacle) => ({
+      bottom: Math.max(bounds.bottom, obstacle.top + obstacle.height),
+      top: Math.min(bounds.top, obstacle.top),
+    }),
+    {
+      bottom: 0,
+      top: Number.POSITIVE_INFINITY,
+    },
+  );
+}
+
+function createFigureObstacles(
   stageWidth: number,
   lineHeight: number,
   figureLeft: number,
   figureTop: number,
   figureWidth: number,
   figureHeight: number,
-): FlowObstacle {
+): FlowObstacle[] {
+  const centerX = figureLeft + figureWidth / 2;
   const horizontalPadding = clamp(lineHeight * 0.8, 18, 30);
   const topPadding = clamp(lineHeight * 0.45, 8, 16);
-  const bottomPadding = clamp(lineHeight * 1.15, 22, 36);
-  const obstacleLeft = Math.max(0, figureLeft - horizontalPadding);
-  const obstacleRight = Math.min(stageWidth, figureLeft + figureWidth + horizontalPadding);
+  const bottomPadding = clamp(lineHeight * 0.95, 18, 30);
+  const captionHeight = clamp(lineHeight * 2.2, 42, 64);
 
-  return createObstacle(
-    'figure-safe-zone',
-    obstacleLeft,
-    Math.max(0, figureTop - topPadding),
-    obstacleRight - obstacleLeft,
-    figureHeight + topPadding + bottomPadding,
-  );
+  return [
+    createCenteredObstacle(
+      'figure-crown',
+      stageWidth,
+      centerX,
+      figureTop - topPadding,
+      figureWidth * 0.74 + horizontalPadding * 1.4,
+      figureHeight * 0.26 + topPadding,
+    ),
+    createCenteredObstacle(
+      'figure-body',
+      stageWidth,
+      centerX,
+      figureTop + figureHeight * 0.17,
+      figureWidth + horizontalPadding * 2.1,
+      figureHeight * 0.42,
+    ),
+    createCenteredObstacle(
+      'figure-lower',
+      stageWidth,
+      centerX,
+      figureTop + figureHeight * 0.55,
+      figureWidth * 0.88 + horizontalPadding * 1.6,
+      figureHeight * 0.28 + bottomPadding,
+    ),
+    createCenteredObstacle(
+      'figure-caption',
+      stageWidth,
+      centerX,
+      figureTop + figureHeight - captionHeight * 0.82,
+      figureWidth * 0.94 + horizontalPadding * 1.2,
+      captionHeight,
+    ),
+  ];
 }
 
 function createCalloutPlacement(
@@ -310,48 +371,88 @@ export function buildReaderSceneLayout(
   const compact = width < 720;
 
   if (compact) {
-    const figureWidth = Math.min(width * 0.56, 250);
-    const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 1800) * Math.min(width * 0.012, 4);
     const driftY = Math.cos(motionTimeMs / 2200) * Math.min(lineHeight * 0.2, 4);
-    const figureLeft = (width - figureWidth) / 2 + driftX;
-    const figureTop = lineHeight * 0.6 + driftY;
-    const obstacle = createFigureObstacle(
+    let figureWidth = clamp(width * 0.33, 122, 198);
+    let figureLeft = width - figureWidth - 10 + driftX;
+    let figureTop = lineHeight * 1.4 + driftY;
+    let rotation = 1.2 + Math.sin(motionTimeMs / 2600) * 0.6;
+
+    if (scene.id === 'bank') {
+      figureWidth = clamp(width * 0.35, 126, 204);
+      figureLeft = width - figureWidth - 10 + driftX;
+      figureTop = lineHeight * 1.15 + driftY;
+      rotation = 1.8 + Math.sin(motionTimeMs / 2500) * 0.5;
+    } else if (scene.id === 'fall') {
+      figureWidth = clamp(width * 0.25, 108, 142);
+      figureLeft = width * 0.08 + driftX;
+      figureTop = lineHeight * 1.3 + driftY;
+      rotation = -1.2 + Math.sin(motionTimeMs / 2400) * 0.75;
+    } else if (scene.id === 'hall') {
+      figureWidth = clamp(width * 0.31, 124, 178);
+      figureLeft = width - figureWidth - 12 + driftX;
+      figureTop = lineHeight * 1.55 + driftY;
+      rotation = 1.1 + Math.sin(motionTimeMs / 2700) * 0.55;
+    } else if (scene.id === 'tea') {
+      figureWidth = clamp(width * 0.35, 140, 194);
+      figureLeft = width * 0.06 + driftX;
+      figureTop = lineHeight * 1.65 + driftY;
+      rotation = -1 + Math.sin(motionTimeMs / 2500) * 0.55;
+    } else if (scene.id === 'queen') {
+      figureWidth = clamp(width * 0.28, 116, 158);
+      figureLeft = width - figureWidth - 14 + driftX;
+      figureTop = lineHeight * 1.45 + driftY;
+      rotation = 1.9 + Math.sin(motionTimeMs / 2600) * 0.45;
+    } else if (scene.id === 'trial') {
+      figureWidth = clamp(width * 0.27, 114, 154);
+      figureLeft = width * 0.08 + driftX;
+      figureTop = lineHeight * 1.8 + driftY;
+      rotation = -1.4 + Math.sin(motionTimeMs / 2400) * 0.5;
+    } else if (scene.id === 'waking') {
+      figureWidth = clamp(width * 0.28, 118, 160);
+      figureLeft = width - figureWidth - 12 + driftX;
+      figureTop = lineHeight * 1.55 + driftY;
+      rotation = 1 + Math.sin(motionTimeMs / 2800) * 0.4;
+    }
+
+    const safeFigureLeft = clamp(figureLeft, 8, Math.max(8, width - figureWidth - 8));
+    const figureHeight = figureWidth * scene.figure.displayAspectRatio;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
-      figureLeft,
+      safeFigureLeft,
       figureTop,
       figureWidth,
       figureHeight,
     );
 
     return {
-      bottomPadding: lineHeight * 2.8,
+      bottomPadding: lineHeight * 2.6,
       callouts: [],
       figure: {
         ...scene.figure,
         height: figureHeight,
-        left: figureLeft,
-        rotation: Math.sin(motionTimeMs / 2600) * 0.8,
+        left: safeFigureLeft,
+        rotation,
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 3.8,
-      topPadding: obstacle.top + obstacle.height + lineHeight * 1.4,
+      obstacles,
+      stageMinHeight: lineHeight * 12,
+      topPadding: lineHeight * 0.9,
     };
   }
 
   const callouts = resolveReaderCallouts(scene, width, lineHeight, motionTimeMs);
 
   if (scene.id === 'bank') {
-    const figureWidth = clamp(width * 0.28, 180, 270);
+    const figureWidth = clamp(width * 0.27, 182, 258);
     const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 2400) * Math.min(width * 0.008, 4);
     const driftY = Math.cos(motionTimeMs / 2600) * Math.min(lineHeight * 0.12, 3);
-    const figureLeft = width - figureWidth - 12 + driftX;
-    const figureTop = lineHeight * 0.45 + driftY;
-    const obstacle = createFigureObstacle(
+    const figureLeft = width - figureWidth - 18 + driftX;
+    const figureTop = lineHeight * 0.55 + driftY;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
       figureLeft,
@@ -359,6 +460,7 @@ export function buildReaderSceneLayout(
       figureWidth,
       figureHeight,
     );
+    const obstacleBounds = getObstacleBounds(obstacles);
 
     return {
       bottomPadding: lineHeight * 2.4,
@@ -371,20 +473,20 @@ export function buildReaderSceneLayout(
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 2.8,
+      obstacles,
+      stageMinHeight: obstacleBounds.bottom + lineHeight * 2.8,
       topPadding: lineHeight * 0.55,
     };
   }
 
   if (scene.id === 'fall') {
-    const figureWidth = clamp(width * 0.2, 130, 180);
+    const figureWidth = clamp(width * 0.17, 128, 160);
     const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 2200) * Math.min(width * 0.01, 4);
     const driftY = Math.cos(motionTimeMs / 1900) * Math.min(lineHeight * 0.2, 5);
-    const figureLeft = width * 0.07 + driftX;
-    const figureTop = lineHeight * 1 + driftY;
-    const obstacle = createFigureObstacle(
+    const figureLeft = width * 0.09 + driftX;
+    const figureTop = lineHeight * 1.55 + driftY;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
       figureLeft,
@@ -392,6 +494,7 @@ export function buildReaderSceneLayout(
       figureWidth,
       figureHeight,
     );
+    const obstacleBounds = getObstacleBounds(obstacles);
 
     return {
       bottomPadding: lineHeight * 2.5,
@@ -404,20 +507,20 @@ export function buildReaderSceneLayout(
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 3.1,
-      topPadding: lineHeight * 0.8,
+      obstacles,
+      stageMinHeight: obstacleBounds.bottom + lineHeight * 3.1,
+      topPadding: lineHeight * 0.75,
     };
   }
 
   if (scene.id === 'hall') {
-    const figureWidth = clamp(width * 0.32, 210, 320);
+    const figureWidth = clamp(width * 0.23, 184, 232);
     const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 2400) * Math.min(width * 0.01, 4);
     const driftY = Math.cos(motionTimeMs / 2600) * Math.min(lineHeight * 0.18, 4);
-    const figureLeft = width - figureWidth - 10 + driftX;
-    const figureTop = lineHeight * 3.7 + driftY;
-    const obstacle = createFigureObstacle(
+    const figureLeft = width * 0.57 + driftX;
+    const figureTop = lineHeight * 1.8 + driftY;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
       figureLeft,
@@ -425,6 +528,7 @@ export function buildReaderSceneLayout(
       figureWidth,
       figureHeight,
     );
+    const obstacleBounds = getObstacleBounds(obstacles);
 
     return {
       bottomPadding: lineHeight * 2.5,
@@ -437,20 +541,20 @@ export function buildReaderSceneLayout(
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 2.8,
-      topPadding: lineHeight * 0.7,
+      obstacles,
+      stageMinHeight: obstacleBounds.bottom + lineHeight * 2.8,
+      topPadding: lineHeight * 0.78,
     };
   }
 
   if (scene.id === 'tea') {
-    const figureWidth = clamp(width * 0.34, 230, 320);
+    const figureWidth = clamp(width * 0.27, 202, 248);
     const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 2500) * Math.min(width * 0.01, 5);
     const driftY = Math.cos(motionTimeMs / 2100) * Math.min(lineHeight * 0.16, 4);
-    const figureLeft = width * 0.02 + driftX;
-    const figureTop = lineHeight * 1.2 + driftY;
-    const obstacle = createFigureObstacle(
+    const figureLeft = width * 0.08 + driftX;
+    const figureTop = lineHeight * 1.9 + driftY;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
       figureLeft,
@@ -458,6 +562,7 @@ export function buildReaderSceneLayout(
       figureWidth,
       figureHeight,
     );
+    const obstacleBounds = getObstacleBounds(obstacles);
 
     return {
       bottomPadding: lineHeight * 2.7,
@@ -470,20 +575,20 @@ export function buildReaderSceneLayout(
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 3.4,
+      obstacles,
+      stageMinHeight: obstacleBounds.bottom + lineHeight * 3.4,
       topPadding: lineHeight * 0.8,
     };
   }
 
   if (scene.id === 'queen') {
-    const figureWidth = clamp(width * 0.28, 190, 250);
+    const figureWidth = clamp(width * 0.21, 170, 206);
     const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 2300) * Math.min(width * 0.009, 4);
     const driftY = Math.cos(motionTimeMs / 2500) * Math.min(lineHeight * 0.14, 4);
-    const figureLeft = width - figureWidth - 10 + driftX;
-    const figureTop = lineHeight * 1.1 + driftY;
-    const obstacle = createFigureObstacle(
+    const figureLeft = width * 0.59 + driftX;
+    const figureTop = lineHeight * 1.7 + driftY;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
       figureLeft,
@@ -491,6 +596,7 @@ export function buildReaderSceneLayout(
       figureWidth,
       figureHeight,
     );
+    const obstacleBounds = getObstacleBounds(obstacles);
 
     return {
       bottomPadding: lineHeight * 2.7,
@@ -503,20 +609,20 @@ export function buildReaderSceneLayout(
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 3,
-      topPadding: lineHeight * 0.75,
+      obstacles,
+      stageMinHeight: obstacleBounds.bottom + lineHeight * 3,
+      topPadding: lineHeight * 0.8,
     };
   }
 
   if (scene.id === 'trial') {
-    const figureWidth = clamp(width * 0.24, 170, 220);
+    const figureWidth = clamp(width * 0.19, 156, 188);
     const figureHeight = figureWidth * scene.figure.displayAspectRatio;
     const driftX = Math.sin(motionTimeMs / 2200) * Math.min(width * 0.009, 4);
     const driftY = Math.cos(motionTimeMs / 2400) * Math.min(lineHeight * 0.14, 4);
-    const figureLeft = width * 0.08 + driftX;
-    const figureTop = lineHeight * 1.2 + driftY;
-    const obstacle = createFigureObstacle(
+    const figureLeft = width * 0.1 + driftX;
+    const figureTop = lineHeight * 2 + driftY;
+    const obstacles = createFigureObstacles(
       width,
       lineHeight,
       figureLeft,
@@ -524,6 +630,7 @@ export function buildReaderSceneLayout(
       figureWidth,
       figureHeight,
     );
+    const obstacleBounds = getObstacleBounds(obstacles);
 
     return {
       bottomPadding: lineHeight * 2.6,
@@ -536,19 +643,19 @@ export function buildReaderSceneLayout(
         top: figureTop,
         width: figureWidth,
       },
-      obstacles: [obstacle],
-      stageMinHeight: obstacle.top + obstacle.height + lineHeight * 3.1,
+      obstacles,
+      stageMinHeight: obstacleBounds.bottom + lineHeight * 3.1,
       topPadding: lineHeight * 0.8,
     };
   }
 
-  const figureWidth = clamp(width * 0.25, 180, 228);
+  const figureWidth = clamp(width * 0.19, 164, 194);
   const figureHeight = figureWidth * scene.figure.displayAspectRatio;
   const driftX = Math.sin(motionTimeMs / 2400) * Math.min(width * 0.009, 4);
   const driftY = Math.cos(motionTimeMs / 2600) * Math.min(lineHeight * 0.15, 4);
-  const figureLeft = width - figureWidth - 18 + driftX;
-  const figureTop = lineHeight * 5.4 + driftY;
-  const obstacle = createFigureObstacle(
+  const figureLeft = width * 0.55 + driftX;
+  const figureTop = lineHeight * 1.85 + driftY;
+  const obstacles = createFigureObstacles(
     width,
     lineHeight,
     figureLeft,
@@ -556,6 +663,7 @@ export function buildReaderSceneLayout(
     figureWidth,
     figureHeight,
   );
+  const obstacleBounds = getObstacleBounds(obstacles);
 
   return {
     bottomPadding: lineHeight * 2.8,
@@ -568,8 +676,8 @@ export function buildReaderSceneLayout(
       top: figureTop,
       width: figureWidth,
     },
-    obstacles: [obstacle],
-    stageMinHeight: obstacle.top + obstacle.height + lineHeight * 2.9,
-    topPadding: lineHeight * 0.9,
+    obstacles,
+    stageMinHeight: obstacleBounds.bottom + lineHeight * 2.9,
+    topPadding: lineHeight * 0.82,
   };
 }
