@@ -15,14 +15,18 @@ import {
   computeVideoAsciiMetrics,
   type VideoAsciiSettings,
 } from '../lib/colorVideoAscii';
+import {
+  buildTerminalAsciiPowerShellScript,
+  buildTerminalAsciiShellScript,
+} from '../lib/terminalAsciiExport';
 
 type AsciiPlaygroundProps = {
   maxWidth: number;
 };
 
-type SourceMode = 'camera' | 'idle' | 'reference' | 'screen' | 'upload' | 'url';
+type SourceMode = 'camera' | 'idle' | 'screen' | 'upload';
 type CopyState = 'copied' | 'error' | 'idle';
-type VideoStatus = 'error' | 'idle' | 'loading' | 'ready' | 'reference';
+type VideoStatus = 'error' | 'idle' | 'loading' | 'ready';
 
 type VideoFrameCallback = (now: number, metadata: unknown) => void;
 
@@ -31,7 +35,6 @@ type HTMLVideoElementWithFrameCallback = HTMLVideoElement & {
   requestVideoFrameCallback?: (callback: VideoFrameCallback) => number;
 };
 
-const DEFAULT_VIDEO_URL = 'https://www.youtube.com/watch?v=WtoxxHADnGk';
 const DEFAULT_VIDEO_SETTINGS: VideoAsciiSettings = {
   brightness: 0.02,
   colorBoost: 1.24,
@@ -43,42 +46,6 @@ const DEFAULT_VIDEO_SETTINGS: VideoAsciiSettings = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function extractYouTubeVideoId(value: string): string | null {
-  const trimmed = value.trim();
-
-  try {
-    const url = new URL(trimmed);
-    const hostname = url.hostname.replace(/^www\./iu, '').replace(/^m\./iu, '');
-
-    if (hostname === 'youtu.be') {
-      return url.pathname.split('/').filter(Boolean)[0] ?? null;
-    }
-
-    if (hostname === 'youtube.com' || hostname === 'youtube-nocookie.com') {
-      const directId = url.searchParams.get('v');
-      if (directId) {
-        return directId;
-      }
-
-      const pathParts = url.pathname.split('/').filter(Boolean);
-      const embedIndex = pathParts.findIndex((part) =>
-        ['embed', 'shorts', 'live'].includes(part.toLowerCase()),
-      );
-      if (embedIndex >= 0) {
-        return pathParts[embedIndex + 1] ?? null;
-      }
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-function buildYouTubeEmbedUrl(videoId: string): string {
-  return `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1`;
 }
 
 function stopMediaStream(stream: MediaStream | null): void {
@@ -99,13 +66,19 @@ function resolveSourceLabel(sourceMode: SourceMode): string {
       return 'Live screen';
     case 'upload':
       return 'Local file';
-    case 'url':
-      return 'Direct video';
-    case 'reference':
-      return 'Reference embed';
     default:
       return 'No source';
   }
+}
+
+function downloadTextFile(filename: string, content: string): void {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(objectUrl);
 }
 
 function useElementWidth(ref: RefObject<HTMLElement | null>): number {
@@ -136,18 +109,13 @@ function useElementWidth(ref: RefObject<HTMLElement | null>): number {
 function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
   const [videoSource, setVideoSource] = useState<string | null>(null);
   const [streamSource, setStreamSource] = useState<MediaStream | null>(null);
-  const [videoUrlInput, setVideoUrlInput] = useState(DEFAULT_VIDEO_URL);
-  const [referenceLinkUrl, setReferenceLinkUrl] = useState(DEFAULT_VIDEO_URL);
-  const [referenceEmbedUrl, setReferenceEmbedUrl] = useState<string | null>(
-    buildYouTubeEmbedUrl('WtoxxHADnGk'),
-  );
   const [videoAspectRatio, setVideoAspectRatio] = useState(16 / 9);
-  const [sourceMode, setSourceMode] = useState<SourceMode>('reference');
+  const [sourceMode, setSourceMode] = useState<SourceMode>('idle');
   const [asciiSnapshotText, setAsciiSnapshotText] = useState('');
   const [copyState, setCopyState] = useState<CopyState>('idle');
-  const [status, setStatus] = useState<VideoStatus>('reference');
+  const [status, setStatus] = useState<VideoStatus>('idle');
   const [statusMessage, setStatusMessage] = useState(
-    'Reference clip loaded below. For live ASCII sampling, use Camera, Screen, Upload, or a direct video URL.',
+    'Upload a clip, use your camera, or share your screen to feed the live ASCII stage.',
   );
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoSettings, setVideoSettings] = useState(DEFAULT_VIDEO_SETTINGS);
@@ -197,13 +165,11 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
   const copyTextAreaHeight = clamp(copyableRows * 13 + 30, 220, stageHeight);
   const sourceLabel = resolveSourceLabel(sourceMode);
   const previewLabel =
-    sourceMode === 'reference'
-      ? 'Reference'
-      : sourceMode === 'camera' || sourceMode === 'screen'
-        ? 'Live input'
-        : sourceMode === 'upload' || sourceMode === 'url'
+    sourceMode === 'camera' || sourceMode === 'screen'
+      ? 'Live input'
+      : sourceMode === 'upload'
         ? 'Source video'
-          : 'Preview';
+        : 'Preview';
   const copyStatusLabel =
     copyState === 'copied' ? 'ASCII copied.' : copyState === 'error' ? 'Copy failed.' : '';
 
@@ -333,8 +299,8 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
       outputContext.fillStyle = 'rgba(255, 241, 216, 0.74)';
       outputContext.font = '400 14px Inter, sans-serif';
       outputContext.fillText(
-        sourceMode === 'reference'
-          ? 'Use Camera or Screen to read frames live, or upload a clip for direct sampling.'
+        sourceMode === 'idle'
+          ? 'Use Camera, Screen, or Upload to feed the renderer.'
           : 'Waiting for a readable video source to feed the renderer.',
         36,
         88,
@@ -385,7 +351,7 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
         setIsPlaying(false);
         setStatus('error');
         setStatusMessage(
-          'This source blocks canvas pixel reads. Use Camera, Screen, a local file, or a direct video URL that allows CORS.',
+          'This source blocked canvas pixel reads. Use Camera, Screen, or a local file.',
         );
         video.pause();
         drawPlaceholder();
@@ -461,7 +427,7 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
         setVideoAspectRatio(video.videoWidth / video.videoHeight);
       }
 
-      setStatus(sourceMode === 'reference' ? 'reference' : 'ready');
+      setStatus('ready');
       setStatusMessage(
         sourceMode === 'camera'
           ? 'Reading camera frames live into the ASCII stage.'
@@ -492,9 +458,7 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
     const handleError = () => {
       cancelScheduledFrame();
       setStatus('error');
-      setStatusMessage(
-        'The video could not be loaded. Try Camera, Screen, a local MP4/WebM, or a direct video URL that allows CORS.',
-      );
+      setStatusMessage('The video could not be loaded. Try Camera, Screen, or a local MP4/WebM clip.');
       drawPlaceholder();
     };
 
@@ -559,44 +523,10 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
     const objectUrl = URL.createObjectURL(file);
     objectUrlRef.current = objectUrl;
     samplingBlockedRef.current = false;
-    setReferenceEmbedUrl(null);
     setVideoSource(objectUrl);
-    setVideoUrlInput('');
     setSourceMode('upload');
     setStatus('loading');
     setStatusMessage(`Loading ${file.name}...`);
-  };
-
-  const handleLoadUrl = () => {
-    const trimmedUrl = videoUrlInput.trim();
-    if (trimmedUrl.length === 0) {
-      return;
-    }
-
-    const youTubeVideoId = extractYouTubeVideoId(trimmedUrl);
-    if (youTubeVideoId !== null) {
-      clearObjectUrl();
-      stopCurrentStream();
-      setVideoSource(null);
-      setReferenceEmbedUrl(buildYouTubeEmbedUrl(youTubeVideoId));
-      setReferenceLinkUrl(trimmedUrl);
-      setSourceMode('reference');
-      setStatus('reference');
-      setStatusMessage(
-        'Reference clip loaded. Use Camera, Screen, Upload, or a direct video file URL for live ASCII sampling.',
-      );
-      return;
-    }
-
-    clearObjectUrl();
-    stopCurrentStream();
-    samplingBlockedRef.current = false;
-    setReferenceEmbedUrl(null);
-    setReferenceLinkUrl(trimmedUrl);
-    setVideoSource(trimmedUrl);
-    setSourceMode('url');
-    setStatus('loading');
-    setStatusMessage('Loading remote video...');
   };
 
   const handleStartCamera = async () => {
@@ -614,7 +544,6 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
       clearObjectUrl();
       stopCurrentStream();
       samplingBlockedRef.current = false;
-      setReferenceEmbedUrl(null);
       setVideoSource(null);
       setSourceMode('camera');
       setStatus('loading');
@@ -657,7 +586,6 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
       clearObjectUrl();
       stopCurrentStream();
       samplingBlockedRef.current = false;
-      setReferenceEmbedUrl(null);
       setVideoSource(null);
       setSourceMode('screen');
       setStatus('loading');
@@ -695,17 +623,12 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
 
     samplingBlockedRef.current = false;
     setVideoSource(null);
-    setReferenceEmbedUrl(null);
-    setReferenceLinkUrl('');
-    setVideoUrlInput('');
     snapshotTextRef.current = '';
     setAsciiSnapshotText('');
     setSourceMode('idle');
     setIsPlaying(false);
     setStatus('idle');
-    setStatusMessage(
-      'Paste a YouTube reference URL, or use Camera, Screen, Upload, or a direct video file URL for live sampling.',
-    );
+    setStatusMessage('Upload a clip, use your camera, or share your screen to feed the live ASCII stage.');
   };
 
   const handleCopyAsciiSnapshot = async () => {
@@ -723,6 +646,14 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
     }
   };
 
+  const handleExportShellScript = () => {
+    downloadTextFile('color-video-ascii.sh', buildTerminalAsciiShellScript(videoSettings));
+  };
+
+  const handleExportPowerShellScript = () => {
+    downloadTextFile('color-video-ascii.ps1', buildTerminalAsciiPowerShellScript(videoSettings));
+  };
+
   return (
     <section className="ascii-demo">
       <div className="video-ascii-shell" style={{ maxWidth }}>
@@ -730,26 +661,20 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
           <p className="reader-kicker">Realtime Color ASCII</p>
           <h2 className="ascii-title">Live video, rendered as type.</h2>
           <p className="reader-deck">
-            Feed the stage from your camera, screen, uploaded clips, or direct video URLs. YouTube
-            links stay in the reference dock while the renderer samples readable frames in real time.
+            Feed the stage from your camera, screen, or uploaded clips. You can also export Linux
+            and PowerShell terminal players that replay a local video as ANSI color ASCII.
           </p>
 
           <div className="video-ascii-command-bar">
-            <div className="video-ascii-url-row">
-              <input
-                type="url"
-                value={videoUrlInput}
-                placeholder="Paste a YouTube reference link, or a direct MP4/WebM URL."
-                onChange={(event) => setVideoUrlInput(event.target.value)}
-              />
-            </div>
-
             <div className="video-ascii-primary-actions">
-              <button type="button" onClick={handleLoadUrl}>
-                Load link
-              </button>
               <button type="button" onClick={() => fileInputRef.current?.click()}>
                 Upload clip
+              </button>
+              <button type="button" onClick={handleExportPowerShellScript}>
+                Export .ps1
+              </button>
+              <button type="button" onClick={handleExportShellScript}>
+                Export .sh
               </button>
               <button type="button" onClick={handleClearVideo}>
                 Clear
@@ -773,6 +698,11 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
               <span className={`video-ascii-source-pill is-${sourceMode}`}>{sourceLabel}</span>
             </div>
           </div>
+          <p className="video-ascii-command-note">
+            Exported scripts expect `ffmpeg`, `ffprobe`, `ffplay`, and Python 3. They loop by
+            default, play audio alongside the terminal renderer, and support mute mode with
+            `--mute` or `-Mute`.
+          </p>
         </div>
 
         <div className="video-ascii-stage-card">
@@ -803,33 +733,24 @@ function AsciiPlayground({ maxWidth }: AsciiPlaygroundProps) {
                 <div className="video-ascii-preview-head">
                   <span>{previewLabel}</span>
                   <div className="video-ascii-preview-meta">
-                    {referenceEmbedUrl !== null && referenceLinkUrl.length > 0 ? (
-                      <a href={referenceLinkUrl} target="_blank" rel="noreferrer">
-                        Open YouTube
-                      </a>
-                    ) : null}
                     <span>{status === 'ready' && isPlaying ? 'Live' : 'Standby'}</span>
                   </div>
                 </div>
-                {referenceEmbedUrl !== null ? (
-                  <iframe
-                    className="video-ascii-embed"
-                    src={referenceEmbedUrl}
-                    title="YouTube reference video"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : (
+                {streamSource !== null || videoSource !== null ? (
                   <video
                     ref={videoRef}
                     className="video-ascii-preview"
                     src={streamSource === null ? videoSource ?? undefined : undefined}
-                    crossOrigin="anonymous"
                     controls
                     loop
                     muted
                     playsInline
+                    preload="auto"
                   />
+                ) : (
+                  <div className="video-ascii-preview-empty">
+                    Upload a clip, use the camera, or share your screen to preview the live input.
+                  </div>
                 )}
               </div>
             </div>

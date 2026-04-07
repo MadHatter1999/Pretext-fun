@@ -343,6 +343,7 @@ button {
 .video-ascii-primary-actions {
   display: grid;
   gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .video-ascii-live-actions button {
@@ -489,6 +490,13 @@ button {
 
 .ascii-helper {
   margin: -2px 0 0;
+}
+
+.video-ascii-command-note {
+  margin: 0;
+  color: rgba(246, 235, 214, 0.62);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .video-ascii-meta {
@@ -668,6 +676,21 @@ button {
 
 .video-ascii-preview {
   min-height: 180px;
+}
+
+.video-ascii-preview-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 212, 146, 0.05), transparent 24%),
+    rgba(11, 9, 6, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  color: rgba(255, 241, 216, 0.68);
+  text-align: center;
+  line-height: 1.45;
 }
 
 .video-ascii-embed {
@@ -1887,7 +1910,7 @@ button {
   }
 
   .video-ascii-primary-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .video-ascii-canvas {
